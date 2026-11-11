@@ -1,6 +1,6 @@
 // 앱 파일을 기기에 저장해 두어 오프라인에서도 열리게 합니다.
 // 앱을 고친 뒤 배포할 때는 VERSION 숫자를 올려주세요.
-const VERSION = "woori-v10";
+const VERSION = "woori-v11";
 const SHELL = ["./", "index.html", "maps.js", "kr_muni.js", "fb.js", "firebase-config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 const FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 

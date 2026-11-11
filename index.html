@@ -169,6 +169,13 @@ textarea.in1{min-height:110px;resize:vertical}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .grid3 button{aspect-ratio:1;border-radius:12px;overflow:hidden;position:relative}
 .grid3 img{width:100%;height:100%;object-fit:cover}
+.kth{position:relative;aspect-ratio:1}.kth>button{width:100%;height:100%;border-radius:12px;overflow:hidden;position:relative;display:block}
+.kth img{width:100%;height:100%;object-fit:cover;display:block}
+.kth .star{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;background:#0007;color:#fff;font-size:16px;display:grid;place-items:center;cursor:pointer;z-index:2}
+.kth .star.on{background:var(--accent)}
+.kth .rep{position:absolute;top:7px;left:7px;background:var(--accent);color:#fff;font-size:11px;font-weight:800;padding:3px 8px;border-radius:999px;z-index:2}
+.kth.is-rep>button{box-shadow:0 0 0 3px var(--accent)}
+.kth em{position:absolute;left:6px;bottom:6px;font-style:normal;color:#fff;font-size:11px;font-weight:700;text-shadow:0 1px 3px #000}
 .grid3 em{position:absolute;left:6px;bottom:6px;font-style:normal;color:#fff;font-size:11px;font-weight:700;text-shadow:0 1px 3px #000}
 .sec{font-weight:800;font-size:15px;margin:22px 0 10px;display:flex;align-items:center}
 .sec small{margin-left:auto;color:var(--sub);font-weight:500}
@@ -504,6 +511,7 @@ const NPROV = PROV_ORDER.length;
 function kc(i) { if (!i || i.code == null) return null; if (i.v === 2) return String(i.code); return i.type === "korea" ? (OLD_P[i.code] || null) : (OLD_D[i.code] || null); }
 const DIST_TOTAL = PROV_ORDER.reduce((s, p) => s + ((typeof KMUNI !== "undefined" && KMUNI[p]) || []).length, 0);
 function distInfo(code) { code = String(code || ""); const p = code.slice(0, 2); const d = ((typeof KMUNI !== "undefined" && KMUNI[p]) || []).find(x => x.id === code); return { p, n: d ? d.n : String(code), d }; }
+function kRank(i) { return i.coverAt ? 1e13 + i.coverAt : (i.createdAt || 0); }
 function kState() {
   const dv = new Set(), pv = new Set(), dt = {}, pt = {}, dc = {}, pc = {};
   for (const i of S.items) {
@@ -513,7 +521,7 @@ function kState() {
       const p = code.slice(0, 2); dv.add(code); pv.add(p);
       if (i.type === "kphoto") {
         dc[code] = (dc[code] || 0) + 1; pc[p] = (pc[p] || 0) + 1;
-        const th = safeSrc(i.thumb || i.photo), t = i.coverAt || i.createdAt || 0;
+        const th = safeSrc(i.thumb || i.photo), t = kRank(i);
         if (th) { if (!dt[code] || dt[code].t < t) dt[code] = { s: th, t }; if (!pt[p] || pt[p].t < t) pt[p] = { s: th, t }; }
       }
     }
@@ -540,26 +548,29 @@ function fixPatterns(root) {
 async function addRegionPhotos(code) {
   const files = await pickPhotos(); if (!files.length) return;
   const { p } = distInfo(code);
+  let done = 0;
   toast(`사진 ${files.length}장 올리는 중…`);
   for (const f of files) {
+    done++; if (files.length > 1) toast(`사진 올리는 중… ${done}/${files.length}`);
     try { const photo = await processPhoto(f), thumb = await makeThumb(f); await addItem({ type: "kphoto", v: 2, code, prov: p, photo, thumb, date: today() }); } catch (e) { console.warn(e); }
   }
-  toast("사진을 올렸어요. 지도가 사진으로 채워져요 💜");
+  toast(files.length > 1 ? `사진 ${files.length}장을 올렸어요 💜 ★로 대표 사진을 고를 수 있어요` : "사진을 올렸어요. 지도가 사진으로 채워져요 💜");
 }
 function openDistrict(code) {
   const { p, n, d } = distInfo(code);
   openSheet(`📍 ${PROV[p] || ""} ${n}`, body => {
     const k = kState(), mark = S.items.find(i => i.type === "kdist" && kc(i) === code);
-    const ph = S.items.filter(i => i.type === "kphoto" && kc(i) === code).sort((a, b) => (b.coverAt || b.createdAt) - (a.coverAt || a.createdAt));
+    const ph = S.items.filter(i => i.type === "kphoto" && kc(i) === code).sort((a, b) => kRank(b) - kRank(a)); const repId = ph[0] && ph[0].id;
     body.innerHTML = `${d ? `<div style="display:flex;justify-content:center;margin:4px 0 14px">${photoMap([d], "0 0 320 320", k.dv, k.dt, { h: 260, fit: 1 })}</div>` : ""}
       <div class="setrow"><span>다녀왔어요${ph.length ? `<br><small class="muted">사진이 있으면 자동으로 다녀온 곳이 돼요</small>` : ""}</span><button class="switch ${mark || ph.length ? "on" : ""}" id="kd"></button></div>
-      <button class="pill pri" id="kAdd">📷 이 지역 사진 추가하기</button>
-      <div class="sec">사진 <small>${ph.length}장</small></div>
-      ${ph.length ? `<div class="grid3">${ph.map(i => `<button data-kph="${i.id}"><img src="${safeSrc(i.thumb || i.photo)}" alt="" loading="lazy"><em>${esc((i.text || i.date || "").slice(0, 14))}</em></button>`).join("")}</div>` : `<div class="dash">이곳에서 찍은 사진을 올려보세요<br><small>지도에서 이 지역이 사진으로 채워져요</small></div>`}
+      <button class="pill pri" id="kAdd">📷 사진 여러 장 추가하기</button><div class="muted" style="text-align:center;margin-top:8px;font-size:12px">사진첩에서 여러 장을 한 번에 고를 수 있어요 · ★를 누르면 지도 대표 사진이 돼요</div>
+      <div class="sec">사진 <small>${ph.length}장${ph.length > 1 ? " · 지도에는 대표 사진 1장만 보여요" : ""}</small></div>
+      ${ph.length ? `<div class="grid3">${ph.map(i => `<div class="kth ${i.id === repId ? "is-rep" : ""}"><button data-kph="${i.id}"><img src="${safeSrc(i.thumb || i.photo)}" alt="" loading="lazy"><em>${esc((i.text || i.date || "").slice(0, 14))}</em></button>${i.id === repId ? `<span class="rep">대표</span>` : ""}<span class="star ${i.id === repId ? "on" : ""}" role="button" aria-label="대표 사진으로" data-star="${i.id}">★</span></div>`).join("")}</div>` : `<div class="dash">이곳에서 찍은 사진을 올려보세요<br><small>지도에서 이 지역이 사진으로 채워져요</small></div>`}
       <div class="blockctl"><button data-b>← ${esc(PROV_FULL[p] || "")} 지도</button></div>`;
     $("#kd").onclick = () => { if (mark) { delItem(mark.id); if (ph.length) toast("사진이 있어서 다녀온 곳으로 계속 표시돼요"); } else if (ph.length) toast("이미 사진으로 다녀온 곳이에요"); else { addItem({ type: "kdist", v: 2, code, prov: p, date: today() }); toast(`${n} 다녀온 곳으로 표시했어요`); } };
     $("#kAdd").onclick = () => addRegionPhotos(code);
     body.querySelectorAll("[data-kph]").forEach(b => b.onclick = () => viewKPhoto(b.dataset.kph));
+    body.querySelectorAll("[data-star]").forEach(b => b.onclick = e => { e.stopPropagation(); if (b.dataset.star === repId) return toast("이미 대표 사진이에요"); updateItem(b.dataset.star, { coverAt: Date.now() }); toast("대표 사진을 바꿨어요. 지도에 이 사진만 보여요 ★"); });
     body.querySelector("[data-b]").onclick = () => { catTab.kprov = p; openBlock("korea"); };
   });
 }
@@ -570,7 +581,7 @@ function viewKPhoto(id) {
     const { p, n } = distInfo(code);
     body.innerHTML = `<img class="viewimg" src="${safeSrc(cur.photo || cur.thumb)}" alt=""><div class="muted">📍 ${esc(PROV_FULL[p] || "")} ${esc(n)} · ${esc(nameOf(cur.author))}</div>
       <div class="f" style="margin-top:12px"><label>날짜<input class="in1" type="date" id="kpd" value="${esc(cur.date)}"></label><label>한 줄 메모<input class="in1" id="kpm" value="${esc(cur.text || "")}" maxlength="40" placeholder="예: 처음 같이 간 바다 🌊"></label><button class="pill pri" id="kps">저장</button></div>
-      <div class="blockctl"><button data-b>← ${esc(n)}</button><button data-cover>지도 대표 사진으로</button><button data-d style="color:#e5484d">삭제</button></div>`;
+      <div class="blockctl"><button data-b>← ${esc(n)}</button><button data-cover>${S.items.filter(x => x.type === "kphoto" && kc(x) === code).sort((a, b) => kRank(b) - kRank(a))[0]?.id === id ? "★ 대표 사진" : "☆ 대표 사진으로"}</button><button data-d style="color:#e5484d">삭제</button></div>`;
     $("#kps").onclick = () => { const date = $("#kpd").value || cur.date, text = $("#kpm").value.trim(); document.activeElement.blur(); updateItem(id, { date, text }); toast("저장했어요"); openDistrict(code); };
     body.querySelector("[data-b]").onclick = () => openDistrict(code);
     body.querySelector("[data-cover]").onclick = () => { updateItem(id, { coverAt: Date.now() }); toast("이 사진이 지도에 보여요"); openDistrict(code); };
@@ -1133,7 +1144,7 @@ function hideSplash() {
 }
 setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b10";
+const BUILD = "b11";
 let updShown = false;
 async function hardRefresh() {
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update().catch(() => { }); } catch { }
