@@ -1000,7 +1000,7 @@ function hideSplash() {
 }
 setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b7";
+const BUILD = "b8";
 let updShown = false;
 async function hardRefresh() {
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update().catch(() => { }); } catch { }
