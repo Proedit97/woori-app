@@ -964,6 +964,32 @@ function renderInstallBar() {
 window.addEventListener("appinstalled", () => { installEvt = null; renderInstallBar(); });
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(e => console.warn(e));
+
+// ---------- auto update ----------
+const BUILD = "b5";
+let updShown = false;
+async function checkUpdate() {
+  if (updShown || !navigator.onLine || location.protocol === "file:") return;
+  try {
+    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    const v = await r.json();
+    if (v.build && v.build !== BUILD) {
+      const busy = $("#sheet").classList.contains("on") || pageStack.length || /INPUT|TEXTAREA/.test((document.activeElement || {}).tagName || "");
+      if (!busy && document.visibilityState === "visible" && !sessionStorage.getItem("wr_upd_" + v.build)) { try { sessionStorage.setItem("wr_upd_" + v.build, "1"); } catch { } location.reload(); return; }
+      updShown = true;
+      const el = document.createElement("div");
+      el.className = "ib"; el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));width:calc(100% - 28px);max-width:452px;z-index:45";
+      el.innerHTML = `<div class="t"><b>✨ 새 버전이 나왔어요</b>${esc(v.note || "누르면 바로 적용돼요")}</div><button class="go">적용</button>`;
+      el.querySelector(".go").onclick = () => location.reload();
+      document.body.appendChild(el);
+    }
+  } catch { }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(); });
+window.addEventListener("online", checkUpdate);
+setInterval(checkUpdate, 3 * 60 * 1000);
+setTimeout(checkUpdate, 4000);
 refresh();
 renderInstallBar();
 initStore();
