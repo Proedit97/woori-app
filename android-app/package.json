@@ -1,0 +1,11 @@
+{
+  "name": "woori-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "우리기록 안드로이드 앱 (Capacitor로 웹앱을 감싼 APK)",
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "appId": "com.proedit97.woori",
+  "appName": "우리기록",
+  "webDir": "www",
+  "server": {
+    "url": "https://proedit97.github.io/woori-app/",
+    "androidScheme": "https",
+    "allowNavigation": ["proedit97.github.io", "*.firebaseapp.com", "*.googleapis.com", "*.gstatic.com"]
+  },
+  "android": {
+    "appendUserAgent": "WooriApp",
+    "backgroundColor": "#efe7fb"
+  }
+}
