@@ -197,6 +197,14 @@ textarea.in1{min-height:110px;resize:vertical}
 .sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--line)}
 .gerr{color:#e5484d;font-size:13px;min-height:18px}
 .page .in{padding-top:env(safe-area-inset-top)}
+.ib{display:flex;gap:12px;align-items:center;background:var(--ink);color:var(--card-solid);border-radius:18px;padding:14px 16px;margin:8px 0 4px;box-shadow:0 8px 20px rgba(40,30,80,.25)}
+.ib .t{flex:1;font-size:13px;line-height:1.45}.ib .t b{font-size:15px;display:block;margin-bottom:2px}
+.ib .go{background:var(--accent);color:#fff;border-radius:12px;padding:10px 14px;font-weight:800;font-size:14px;flex:none}
+.ib .x{color:var(--faint);font-size:18px;padding:4px;flex:none}
+.steps{counter-reset:s;display:flex;flex-direction:column;gap:10px;margin:14px 0}
+.steps div{counter-increment:s;display:block;position:relative;background:var(--card-solid);border-radius:14px;padding:14px 14px 14px 54px;font-size:15px;line-height:1.5}
+.steps div::before{content:counter(s);width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;position:absolute;left:14px;top:50%;margin-top:-14px}
+.kbd{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:0 6px;background:var(--bg1);font-weight:700}
 </style>
 </head>
 <body>
@@ -210,6 +218,7 @@ textarea.in1{min-height:110px;resize:vertical}
       <button class="iconbtn" id="btnSet" aria-label="설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     </div>
   </div>
+  <div id="installBar"></div>
   <button class="hero" id="hero"></button>
   <div id="home"></div>
   <div class="status" id="status"></div>
@@ -361,13 +370,14 @@ function hideGate() { $("#gate").hidden = true; }
 function showGate(kind) {
   const g = $("#gate"); g.hidden = false; pageStack.length = 0; showPage(); closeSheet();
   if (kind === "login") {
-    g.innerHTML = `<div class="gbox"><div style="font-size:56px">${esc(S.settings.appIcon || "💜")}</div><h1>${esc(S.settings.appName || "우리기록")}</h1><p class="muted">둘만의 기록을 함께 모아요</p>
+    g.innerHTML = `<div class="gbox"><div style="font-size:56px">${esc(S.settings.appIcon || "💜")}</div><h1>${esc(S.settings.appName || "우리기록")}</h1><p class="muted">둘만의 기록을 함께 모아요</p>${ENV.standalone ? "" : `<button class="chip" id="gInst" style="margin-top:12px">📲 앱으로 설치하기</button>`}
       <button class="pill" id="gGoogle" style="margin-top:28px">Google로 계속하기</button>
       <div class="sep">또는 이메일</div>
       <form class="f" id="gMail"><input class="in1" name="email" type="email" placeholder="이메일" required autocomplete="email"><input class="in1" name="pw" type="password" placeholder="비밀번호 (6자 이상)" minlength="6" required autocomplete="current-password"><input class="in1" name="nick" placeholder="이름 (처음 가입할 때만)" maxlength="12">
       <div class="two"><button class="pill pri" name="act" value="in" style="margin:0">로그인</button><button class="pill" name="act" value="up" style="margin:0">회원가입</button></div></form>
       <button class="muted" id="gReset" style="margin-top:14px;text-decoration:underline">비밀번호를 잊었어요</button><p class="gerr" id="gErr"></p></div>`;
     const err = m => $("#gErr").textContent = m;
+    const gi = $("#gInst"); if (gi) gi.onclick = () => { hideGate(); installGuide(); const back = () => { if (!$("#sheet").classList.contains("on")) { showGate("login"); clearInterval(t); } }; const t = setInterval(back, 400); };
     $("#gGoogle").onclick = async () => {
       const p = new S.F.GoogleAuthProvider();
       try { await S.F.signInWithPopup(S.auth, p); }
@@ -834,8 +844,8 @@ const grp = rows => `<div class="group">${rows.map(r => `<button data-go="${r[0]
 function openSettings() {
   pageStack.length = 0;
   openPage("설정", body => {
-    body.innerHTML = grp([["req", "bulb", "기능 요청하기"]]) + grp([["acct", "user", "내 계정", myName()], ["couple", "heart", "커플 연결", partnerIds().length ? "연결됨" : ""]]) + grp([["theme", "palette", "테마 변경"], ["name", "image", "앱 이름/아이콘 변경"], ["sys", "sliders", "시스템 설정"]]) + grp([["noti", "bell", "알림", S.settings.feed === false ? "꺼짐" : "켜짐"]]) + (installEvt ? `<div class="group"><button id="inst"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>앱 설치하기<span class="v"></span><span class="ch">›</span></button></div>` : "") + (S.mode === "fb" ? `<div class="group"><button id="logout"><svg viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 17l-5-5 5-5M5 12h11"/></svg>로그아웃<span class="v">${esc((S.auth && S.auth.currentUser && S.auth.currentUser.email) || "")}</span><span class="ch">›</span></button></div>` : "") + `<div class="status">${S.mode === "fb" ? "두 사람의 기록이 실시간으로 함께 저장돼요" : "체험 모드: 이 기기에만 저장돼요"}</div>`;
-    const ins = $("#inst"); if (ins) ins.onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; pageRender && pageRender(); };
+    body.innerHTML = grp([["req", "bulb", "기능 요청하기"]]) + grp([["acct", "user", "내 계정", myName()], ["couple", "heart", "커플 연결", partnerIds().length ? "연결됨" : ""]]) + grp([["theme", "palette", "테마 변경"], ["name", "image", "앱 이름/아이콘 변경"], ["sys", "sliders", "시스템 설정"]]) + grp([["noti", "bell", "알림", S.settings.feed === false ? "꺼짐" : "켜짐"]]) + (!ENV.standalone ? `<div class="group"><button id="inst"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>앱 설치하기<span class="v"></span><span class="ch">›</span></button></div>` : "") + (S.mode === "fb" ? `<div class="group"><button id="logout"><svg viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 17l-5-5 5-5M5 12h11"/></svg>로그아웃<span class="v">${esc((S.auth && S.auth.currentUser && S.auth.currentUser.email) || "")}</span><span class="ch">›</span></button></div>` : "") + `<div class="status">${S.mode === "fb" ? "두 사람의 기록이 실시간으로 함께 저장돼요" : "체험 모드: 이 기기에만 저장돼요"}</div>`;
+    const ins = $("#inst"); if (ins) ins.onclick = doInstall;
     const lo = $("#logout"); if (lo) lo.onclick = function () { if (this.dataset.sure) { pageStack.length = 0; showPage(); S.F.signOut(S.auth); } else { this.dataset.sure = 1; this.querySelector(".v").textContent = "한 번 더 누르면 로그아웃"; } };
     body.querySelectorAll("[data-go]").forEach(b => b.onclick = () => SETPAGES[b.dataset.go]());
   });
@@ -888,15 +898,64 @@ const SETPAGES = {
     body.querySelectorAll("[data-dn]").forEach(b => b.onclick = () => mv(+b.dataset.dn, 1));
   }),
   noti: () => openPage("알림", body => {
-    body.innerHTML = `<div class="f" style="margin-top:12px"><div class="setrow"><span>상대방 소식 알림<br><small class="muted">상대가 기록을 남기면 종 아이콘에 빨간 점이 떠요</small></span><button class="switch ${S.settings.feed !== false ? "on" : ""}" id="fd"></button></div></div><p class="muted">휴대폰 푸시 알림은 지원하지 않고, 앱을 열었을 때 확인할 수 있어요.</p>`;
+    body.innerHTML = `<div class="f" style="margin-top:12px"><div class="setrow"><span>상대방 소식 알림<br><small class="muted" style="font-size:12px">상대가 기록을 남기면 종 아이콘에 빨간 점이 떠요</small></span><button class="switch ${S.settings.feed !== false ? "on" : ""}" id="fd"></button></div></div><p class="muted">휴대폰 푸시 알림은 지원하지 않고, 앱을 열었을 때 확인할 수 있어요.</p>`;
     $("#fd").onclick = () => saveSettings({ feed: S.settings.feed === false });
   }),
 };
 
 let installEvt = null;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; if (pageRender) pageRender(); });
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; renderInstallBar(); if (pageRender) pageRender(); });
+// ---------- install helper ----------
+const UA = navigator.userAgent;
+const ENV = {
+  standalone: matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+  ios: /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1),
+  android: /Android/i.test(UA),
+  kakao: /KAKAOTALK/i.test(UA),
+  inapp: /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp|Whale\/.*inapp|; wv\)/i.test(UA),
+  samsung: /SamsungBrowser/i.test(UA),
+  iosOther: /CriOS|FxiOS|EdgiOS|Whale/i.test(UA),
+};
+ENV.mobile = ENV.ios || ENV.android;
+if (ENV.kakao && !sessionStorage.getItem("wr_kk")) { try { sessionStorage.setItem("wr_kk", "1"); } catch { } location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href); }
+function openExternal() {
+  const url = location.href;
+  if (ENV.kakao) location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(url);
+  else if (ENV.android) location.href = "intent://" + url.replace(/^https?:\/\//, "") + "#Intent;scheme=https;package=com.android.chrome;end";
+  else installGuide();
+}
+async function doInstall() {
+  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r && r.outcome === "accepted") toast("설치됐어요! 홈 화면의 하트 아이콘으로 열어주세요 💜"); renderInstallBar(); }
+  else installGuide();
+}
+function installGuide() {
+  let h;
+  if (ENV.inapp) h = `<p class="muted">지금은 ${ENV.kakao ? "카카오톡" : "다른 앱"} 안의 브라우저라 설치할 수 없어요.</p><div class="steps">${ENV.ios ? `<div>오른쪽 아래나 위의 <span class="kbd">⋯</span> 또는 공유 버튼을 눌러요</div><div><b>Safari로 열기</b>(또는 '기본 브라우저로 열기')를 눌러요</div><div>Safari에서 이 화면의 안내대로 설치해요</div>` : `<div>아래 <b>Chrome으로 열기</b> 버튼을 눌러요</div><div>Chrome에서 <b>앱 설치</b> 버튼을 눌러요</div>`}</div>${ENV.android || ENV.kakao ? `<button class="pill pri" id="ext">${ENV.kakao ? "외부 브라우저로 열기" : "Chrome으로 열기"}</button>` : ""}<button class="pill" id="cp">링크 복사하기</button>`;
+  else if (ENV.ios && ENV.iosOther) h = `<p class="muted">아이폰은 <b>Safari</b>에서 설치하는 게 가장 확실해요.</p><div class="steps"><div>아래 <b>링크 복사하기</b>를 눌러요</div><div><b>Safari</b>를 열고 주소창에 붙여넣어요</div><div>Safari 아래쪽 공유 버튼 <span class="kbd">□↑</span> → <b>홈 화면에 추가</b></div></div><button class="pill pri" id="cp">링크 복사하기</button>`;
+  else if (ENV.ios) h = `<div class="steps"><div>화면 아래(또는 주소창 옆)의 공유 버튼 <span class="kbd">□↑</span>을 눌러요</div><div>목록을 아래로 내려 <b>홈 화면에 추가</b>를 눌러요<br><small class="muted" style="font-size:12px">안 보이면 '작업 편집'에서 추가할 수 있어요</small></div><div>오른쪽 위 <b>추가</b>를 누르면 하트 아이콘이 생겨요</div></div>`;
+  else if (ENV.samsung) h = `<div class="steps"><div>아래쪽 메뉴 <span class="kbd">≡</span>를 눌러요</div><div><b>현재 페이지 추가</b> → <b>홈 화면</b>을 눌러요<br><small class="muted" style="font-size:12px">주소창에 다운로드 모양 아이콘이 보이면 그걸 눌러도 돼요</small></div><div>홈 화면에 생긴 하트 아이콘으로 열어요</div></div>`;
+  else if (ENV.android) h = `<div class="steps"><div>오른쪽 위 메뉴 <span class="kbd">⋮</span>를 눌러요</div><div><b>앱 설치</b> 또는 <b>홈 화면에 추가 → 설치</b>를 눌러요</div><div>홈 화면(앱 서랍)에 생긴 하트 아이콘으로 열어요</div></div><p class="muted">메뉴에 '앱 설치'가 없으면 페이지를 새로고침한 뒤 몇 초 기다렸다가 다시 열어보세요.</p>`;
+  else h = `<div class="steps"><div>Chrome·Edge 주소창 오른쪽의 설치 아이콘 <span class="kbd">⊕</span>을 눌러요</div><div><b>설치</b>를 누르면 바탕화면에 아이콘이 생겨요</div></div><p class="muted">휴대폰에서는 이 주소를 그대로 열면 돼요: ${esc(location.href)}</p>`;
+  openSheet("📲 앱 설치하기", body => {
+    body.innerHTML = `<div style="text-align:center"><img src="icons/icon-192.png" alt="" style="width:84px;height:84px;border-radius:20px;box-shadow:0 8px 20px rgba(80,60,160,.25)"><h3 style="margin:10px 0 0">${esc(S.settings.appName || "우리기록")}</h3></div>` + h;
+    const e = $("#ext"); if (e) e.onclick = openExternal;
+    const c = $("#cp"); if (c) c.onclick = async () => { try { await navigator.clipboard.writeText(location.href); toast("링크를 복사했어요"); } catch { toast(location.href); } };
+  });
+}
+function renderInstallBar() {
+  const el = $("#installBar"); if (!el) return;
+  if (ENV.standalone || lsGet("wr_ib_x", 0) > Date.now()) { el.innerHTML = ""; return; }
+  if (!ENV.mobile && !installEvt) { el.innerHTML = ""; return; }
+  const msg = ENV.inapp ? ["외부 브라우저에서 열어주세요", "지금 앱 안의 브라우저에선 설치가 안 돼요"] : ["홈 화면에 앱으로 설치하기", "아이콘을 눌러 앱처럼 바로 열 수 있어요"];
+  el.innerHTML = `<div class="ib"><div class="t"><b>📲 ${msg[0]}</b>${msg[1]}</div><button class="go" id="ibGo">${ENV.inapp ? "열기" : "설치"}</button><button class="x" id="ibX" aria-label="닫기">✕</button></div>`;
+  $("#ibGo").onclick = () => ENV.inapp && (ENV.kakao || ENV.android) ? openExternal() : doInstall();
+  $("#ibX").onclick = () => { lsSet("wr_ib_x", Date.now() + 3 * DAY); renderInstallBar(); };
+}
+window.addEventListener("appinstalled", () => { installEvt = null; renderInstallBar(); });
+
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(e => console.warn(e));
 refresh();
+renderInstallBar();
 initStore();
 </script>
 </body>
