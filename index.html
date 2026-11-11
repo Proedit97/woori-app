@@ -920,7 +920,9 @@ const SETPAGES = {
     body.innerHTML = `<div class="f" style="margin-top:12px"><label>처음 만난 날<input class="in1" type="date" id="sd2" value="${esc(S.settings.startDate)}"></label>
       <div class="setrow"><span>만난 날을 1일로 세기</span><button class="switch ${S.settings.countFromOne ? "on" : ""}" id="c1"></button></div>
       <label>습관 체크 이름<input class="in1" id="hn2" value="${esc(S.settings.habitName)}"></label></div>
+      <div class="sec">앱 버전</div><div class="setrow"><span>현재 버전 <b>${BUILD}</b><br><small class="muted" id="verNote">최신 버전을 확인해 보세요</small></span><button class="chip on" id="verBtn">업데이트 확인</button></div>
       <div class="sec">홈 블록 순서</div><div class="list">${(S.settings.blocks || []).map((b, i, a) => `<div class="row" style="padding:10px 12px"><div class="tx"><b>${BLOCKS[b].ic} ${BLOCKS[b].name}</b></div><button class="chip" data-up="${i}" ${i === 0 ? "disabled style=opacity:.3" : ""}>▲</button><button class="chip" data-dn="${i}" ${i === a.length - 1 ? "disabled style=opacity:.3" : ""}>▼</button></div>`).join("")}</div>`;
+    $("#verBtn").onclick = async function () { this.textContent = "확인 중…"; try { const v = await latestBuild(); if (v.build && v.build !== BUILD) { $("#verNote").textContent = "새 버전 " + v.build + " 적용 중…"; hardRefresh(); } else { this.textContent = "업데이트 확인"; $("#verNote").textContent = "최신 버전이에요 ✓"; } } catch { this.textContent = "업데이트 확인"; $("#verNote").textContent = "인터넷 연결을 확인해 주세요"; } };
     $("#sd2").onchange = e => saveSettings({ startDate: e.target.value });
     $("#c1").onclick = () => saveSettings({ countFromOne: !S.settings.countFromOne });
     $("#hn2").onchange = e => saveSettings({ habitName: e.target.value.trim() || "습관 체크" });
@@ -998,22 +1000,27 @@ function hideSplash() {
 }
 setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b6";
+const BUILD = "b7";
 let updShown = false;
+async function hardRefresh() {
+  try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update().catch(() => { }); } catch { }
+  try { await Promise.all(["./", "index.html", "sw.js", "version.json"].map(u => fetch(u, { cache: "reload" }).catch(() => { }))); } catch { }
+  try { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } catch { }
+  location.replace(location.pathname + "?u=" + Date.now());
+}
+async function latestBuild() { const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" }); return r.ok ? r.json() : {}; }
 async function checkUpdate() {
   if (updShown || !navigator.onLine || location.protocol === "file:") return;
   try {
-    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
-    if (!r.ok) return;
-    const v = await r.json();
+    const v = await latestBuild();
     if (v.build && v.build !== BUILD) {
       const busy = $("#sheet").classList.contains("on") || pageStack.length || /INPUT|TEXTAREA/.test((document.activeElement || {}).tagName || "");
-      if (!busy && document.visibilityState === "visible" && !sessionStorage.getItem("wr_upd_" + v.build)) { try { sessionStorage.setItem("wr_upd_" + v.build, "1"); } catch { } location.reload(); return; }
+      if (!busy && document.visibilityState === "visible" && !sessionStorage.getItem("wr_upd_" + v.build)) { try { sessionStorage.setItem("wr_upd_" + v.build, "1"); } catch { } hardRefresh(); return; }
       updShown = true;
       const el = document.createElement("div");
       el.className = "ib"; el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));width:calc(100% - 28px);max-width:452px;z-index:45";
       el.innerHTML = `<div class="t"><b>✨ 새 버전이 나왔어요</b>${esc(v.note || "누르면 바로 적용돼요")}</div><button class="go">적용</button>`;
-      el.querySelector(".go").onclick = () => location.reload();
+      el.querySelector(".go").onclick = () => { el.querySelector(".go").textContent = "적용 중…"; hardRefresh(); };
       document.body.appendChild(el);
     }
   } catch { }
