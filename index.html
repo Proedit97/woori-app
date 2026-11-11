@@ -73,6 +73,15 @@ svg.map path{fill:var(--card-solid);stroke:var(--faint);stroke-width:.5;transiti
 svg.map path.on{fill:var(--accent);fill-opacity:.75}
 svg.map.click path{cursor:pointer}
 svg.map.kr path{stroke-width:.8}
+svg.map path.ph{fill-opacity:1;stroke:#fff;stroke-width:1.2}
+svg.map path.hl{stroke:var(--accent);stroke-width:2.5}
+.provs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.prov{position:relative;overflow:hidden;background:var(--card-solid);border-radius:14px;padding:12px 10px;text-align:left;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;min-height:68px}
+.prov i{position:absolute;inset:0;background:center/cover}
+.prov i::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 30%,#0008)}
+.prov b,.prov small{position:relative;font-size:14px}.prov small{font-size:12px;color:var(--sub)}
+.prov.hasph b,.prov.hasph small{color:#fff;text-shadow:0 1px 3px #000a}
+.prov.on{box-shadow:inset 0 0 0 2px var(--accent)}
 .cal{display:grid;grid-template-columns:1fr 1.15fr;gap:14px;align-items:center}
 .calph{aspect-ratio:1;border-radius:18px;overflow:hidden;position:relative;background:linear-gradient(135deg,var(--blob2),var(--blob1));color:#fff;padding:12px;display:flex;flex-direction:column;justify-content:flex-end;text-shadow:0 2px 6px #0006}
 .calph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
@@ -252,6 +261,7 @@ window.__splashT0=Date.now();})();
 <input type="file" id="fileIn" accept="image/*" hidden>
 <script src="firebase-config.js"></script>
 <script src="maps.js"></script>
+<script src="kr_muni.js"></script>
 <script>
 "use strict";
 // ---------- helpers ----------
@@ -470,6 +480,99 @@ async function processPhoto(file) {
   return out;
 }
 const safeSrc = s => (typeof s === "string" && s.startsWith("data:image/")) ? s : "";
+function pickPhotos() {
+  return new Promise(res => {
+    const f = document.createElement("input"); f.type = "file"; f.accept = "image/*"; f.multiple = true; f.hidden = true;
+    f.onchange = () => { res([...(f.files || [])]); f.remove(); };
+    document.body.appendChild(f); f.click();
+  });
+}
+async function makeThumb(file, max = 360) {
+  const img = await new Promise((ok, no) => { const u = URL.createObjectURL(file); const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = u; });
+  const sc = Math.min(1, max / Math.min(img.width, img.height));
+  const c = document.createElement("canvas"); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", .7);
+}
+
+// ---------- korea (시·군·구) ----------
+const PROV_ORDER = ["11", "21", "22", "23", "24", "25", "26", "29", "31", "32", "33", "34", "35", "36", "37", "38", "39"];
+const PROV = { 11: "서울", 21: "부산", 22: "대구", 23: "인천", 24: "광주", 25: "대전", 26: "울산", 29: "세종", 31: "경기", 32: "강원", 33: "충북", 34: "충남", 35: "전북", 36: "전남", 37: "경북", 38: "경남", 39: "제주" };
+const PROV_FULL = { 11: "서울특별시", 21: "부산광역시", 22: "대구광역시", 23: "인천광역시", 24: "광주광역시", 25: "대전광역시", 26: "울산광역시", 29: "세종특별자치시", 31: "경기도", 32: "강원특별자치도", 33: "충청북도", 34: "충청남도", 35: "전북특별자치도", 36: "전라남도", 37: "경상북도", 38: "경상남도", 39: "제주특별자치도" };
+const DIST_TOTAL = PROV_ORDER.reduce((s, p) => s + ((typeof KMUNI !== "undefined" && KMUNI[p]) || []).length, 0);
+function distInfo(code) { const p = String(code).slice(0, 2); const d = ((typeof KMUNI !== "undefined" && KMUNI[p]) || []).find(x => x.id === code); return { p, n: d ? d.n : String(code), d }; }
+function kState() {
+  const dv = new Set(), pv = new Set(), dt = {}, pt = {}, dc = {}, pc = {};
+  for (const i of S.items) {
+    if (i.type === "korea") pv.add(i.code);
+    else if (i.type === "kdist" || i.type === "kphoto") {
+      const p = String(i.code).slice(0, 2); dv.add(i.code); pv.add(p);
+      if (i.type === "kphoto") {
+        dc[i.code] = (dc[i.code] || 0) + 1; pc[p] = (pc[p] || 0) + 1;
+        const th = safeSrc(i.thumb || i.photo), t = i.coverAt || i.createdAt || 0;
+        if (th) { if (!dt[i.code] || dt[i.code].t < t) dt[i.code] = { s: th, t }; if (!pt[p] || pt[p].t < t) pt[p] = { s: th, t }; }
+      }
+    }
+  }
+  return { dv, pv, dt, pt, dc, pc };
+}
+let svgSeq = 0;
+function photoMap(list, vb, on, thumbs, opts = {}) {
+  const uid = "pm" + (++svgSeq);
+  const defs = list.filter(c => thumbs[c.id]).map(c => `<pattern id="${uid}-${c.id}" data-for="${c.id}" patternUnits="userSpaceOnUse" width="1" height="1"><image href="${thumbs[c.id].s}" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/></pattern>`).join("");
+  return `<svg class="map kr${opts.click ? " click" : ""}" viewBox="${vb}" width="100%" style="max-height:${opts.h || 300}px" data-pmap ${opts.fit ? "data-fit" : ""}>${defs ? `<defs>${defs}</defs>` : ""}${list.map(c => `<path data-code="${esc(c.id)}" class="${on.has(c.id) ? "on" : ""}${thumbs[c.id] ? " ph" : ""}" d="${c.d}"${thumbs[c.id] ? ` style="fill:url(#${uid}-${c.id})"` : ""}><title>${esc(c.n)}</title></path>`).join("")}</svg>`;
+}
+function fixPatterns(root) {
+  (root || document).querySelectorAll("svg[data-pmap]").forEach(svg => {
+    if (svg.hasAttribute("data-fit")) { const el = svg.querySelector("path"); try { const b = el.getBBox(); if (b.width) { const m = Math.max(b.width, b.height) * .06; svg.setAttribute("viewBox", `${b.x - m} ${b.y - m} ${b.width + 2 * m} ${b.height + 2 * m}`); } } catch { } }
+    svg.querySelectorAll("pattern[data-for]").forEach(pt => {
+      const el = svg.querySelector(`path[data-code="${pt.dataset.for}"]`); if (!el) return;
+      let b; try { b = el.getBBox(); } catch { return; } if (!b.width) return;
+      pt.setAttribute("x", b.x); pt.setAttribute("y", b.y); pt.setAttribute("width", b.width); pt.setAttribute("height", b.height);
+      const im = pt.firstElementChild; im.setAttribute("width", b.width); im.setAttribute("height", b.height);
+    });
+  });
+}
+async function addRegionPhotos(code) {
+  const files = await pickPhotos(); if (!files.length) return;
+  const { p } = distInfo(code);
+  toast(`사진 ${files.length}장 올리는 중…`);
+  for (const f of files) {
+    try { const photo = await processPhoto(f), thumb = await makeThumb(f); await addItem({ type: "kphoto", code, prov: p, photo, thumb, date: today() }); } catch (e) { console.warn(e); }
+  }
+  toast("사진을 올렸어요. 지도가 사진으로 채워져요 💜");
+}
+function openDistrict(code) {
+  const { p, n, d } = distInfo(code);
+  openSheet(`📍 ${PROV[p] || ""} ${n}`, body => {
+    const k = kState(), mark = S.items.find(i => i.type === "kdist" && i.code === code);
+    const ph = S.items.filter(i => i.type === "kphoto" && i.code === code).sort((a, b) => (b.coverAt || b.createdAt) - (a.coverAt || a.createdAt));
+    body.innerHTML = `${d ? `<div style="display:flex;justify-content:center;margin:4px 0 14px">${photoMap([d], "0 0 320 320", k.dv, k.dt, { h: 260, fit: 1 })}</div>` : ""}
+      <div class="setrow"><span>다녀왔어요${ph.length ? `<br><small class="muted">사진이 있으면 자동으로 다녀온 곳이 돼요</small>` : ""}</span><button class="switch ${mark || ph.length ? "on" : ""}" id="kd"></button></div>
+      <button class="pill pri" id="kAdd">📷 이 지역 사진 추가하기</button>
+      <div class="sec">사진 <small>${ph.length}장</small></div>
+      ${ph.length ? `<div class="grid3">${ph.map(i => `<button data-kph="${i.id}"><img src="${safeSrc(i.thumb || i.photo)}" alt="" loading="lazy"><em>${esc((i.text || i.date || "").slice(0, 14))}</em></button>`).join("")}</div>` : `<div class="dash">이곳에서 찍은 사진을 올려보세요<br><small>지도에서 이 지역이 사진으로 채워져요</small></div>`}
+      <div class="blockctl"><button data-b>← ${esc(PROV_FULL[p] || "")} 지도</button></div>`;
+    $("#kd").onclick = () => { if (mark) { delItem(mark.id); if (ph.length) toast("사진이 있어서 다녀온 곳으로 계속 표시돼요"); } else if (ph.length) toast("이미 사진으로 다녀온 곳이에요"); else { addItem({ type: "kdist", code, prov: p, date: today() }); toast(`${n} 다녀온 곳으로 표시했어요`); } };
+    $("#kAdd").onclick = () => addRegionPhotos(code);
+    body.querySelectorAll("[data-kph]").forEach(b => b.onclick = () => viewKPhoto(b.dataset.kph));
+    body.querySelector("[data-b]").onclick = () => { catTab.kprov = p; openBlock("korea"); };
+  });
+}
+function viewKPhoto(id) {
+  const it = S.items.find(x => x.id === id); if (!it) return; const code = it.code;
+  openSheet("📷 지역 사진", body => {
+    const cur = S.items.find(x => x.id === id); if (!cur) { openDistrict(code); return; }
+    const { p, n } = distInfo(code);
+    body.innerHTML = `<img class="viewimg" src="${safeSrc(cur.photo || cur.thumb)}" alt=""><div class="muted">📍 ${esc(PROV_FULL[p] || "")} ${esc(n)} · ${esc(nameOf(cur.author))}</div>
+      <div class="f" style="margin-top:12px"><label>날짜<input class="in1" type="date" id="kpd" value="${esc(cur.date)}"></label><label>한 줄 메모<input class="in1" id="kpm" value="${esc(cur.text || "")}" maxlength="40" placeholder="예: 처음 같이 간 바다 🌊"></label><button class="pill pri" id="kps">저장</button></div>
+      <div class="blockctl"><button data-b>← ${esc(n)}</button><button data-cover>지도 대표 사진으로</button><button data-d style="color:#e5484d">삭제</button></div>`;
+    $("#kps").onclick = () => { const date = $("#kpd").value || cur.date, text = $("#kpm").value.trim(); document.activeElement.blur(); updateItem(id, { date, text }); toast("저장했어요"); openDistrict(code); };
+    body.querySelector("[data-b]").onclick = () => openDistrict(code);
+    body.querySelector("[data-cover]").onclick = () => { updateItem(id, { coverAt: Date.now() }); toast("이 사진이 지도에 보여요"); openDistrict(code); };
+    body.querySelector("[data-d]").onclick = function () { if (this.dataset.sure) { delItem(id); openDistrict(code); } else { this.dataset.sure = 1; this.textContent = "정말 삭제할까요?"; } };
+  });
+}
 
 // ---------- block catalog ----------
 const FOOD_CATS = ["음식점", "카페", "요리"];
@@ -540,7 +643,7 @@ function cardHTML(id) {
       return head() + (last ? `<div class="note"><small class="muted">${esc(last.date)} · ${esc(nameOf(last.author))} ${esc(last.mood || "")}</small>\n${esc(last.text)}</div>` : `<div class="dash">오늘 하루를 남겨볼까요?</div>`) + `<button class="pill" data-act="diaryAdd">오늘 일기 쓰기</button>`;
     }
     case "world": return head(`방문 나라 ${visited("world").size}곳`) + worldSvg(false);
-    case "korea": { const n = visited("korea").size; return head(`전국 ${Math.round(n / 17 * 100)}%`) + `<div style="display:flex;justify-content:center">${koreaSvg(false, 300)}</div>`; }
+    case "korea": { const k = kState(), np = Object.values(k.pc).reduce((a, b) => a + b, 0); return head(`전국 ${Math.round(k.pv.size / 17 * 100)}%`) + `<div style="display:flex;justify-content:center">${photoMap(KOREA, "0 0 300 400", k.pv, k.pt, { h: 300 })}</div><div class="muted" style="text-align:center;margin-top:6px">시·군·구 ${k.dv.size}곳${np ? ` · 사진 ${np}장` : ""}</div>`; }
     case "calendar": {
       const d = new Date(), bg = safeSrc(st.calPhoto);
       return `<div class="cal"><div class="calph">${bg ? `<img src="${bg}" alt="">` : ""}<b>${WD[d.getDay()]}요일</b><strong>${d.getDate()}</strong></div>${miniCal(d.getFullYear(), d.getMonth())}</div>`;
@@ -580,6 +683,7 @@ function refresh(noNames) {
   $("#hero").innerHTML = `<span class="h">💙</span><span><b>${esc(myName())} ♥ ${esc(partners.length ? partnerName() : "상대를 초대해요")}</b><span>${n != null ? `함께한 지 ${n}일째` : "처음 만난 날을 설정해 보세요"}</span></span><span class="chev">›</span>`;
   const blocks = (st.blocks || []).filter(b => BLOCKS[b]);
   $("#home").innerHTML = blocks.length ? blocks.map(b => `<div class="card" role="button" tabindex="0" data-block="${b}">${cardHTML(b)}</div>`).join("") : `<div class="empty-home">오른쪽 위 ＋ 를 눌러<br>블록을 담아보세요</div>`;
+  fixPatterns($("#home"));
   updateBell();
   if (sheetRender) sheetRender();
   if (pageRender) pageRender();
@@ -596,8 +700,8 @@ window.addEventListener("popstate", () => {
 function openSheet(title, render) {
   if (!$("#sheet").classList.contains("on") && !sheetHist) { try { history.pushState({ w: "sheet" }, ""); sheetHist = true; } catch { } }
   $("#sTitle").textContent = title;
-  sheetRender = () => { const b = $("#sBody"), y = b.scrollTop; const active = document.activeElement; if (active && b.contains(active) && /INPUT|TEXTAREA|SELECT/.test(active.tagName)) return; render(b); b.scrollTop = y; };
-  render($("#sBody")); $("#sBody").scrollTop = 0;
+  sheetRender = () => { const b = $("#sBody"), y = b.scrollTop; const active = document.activeElement; if (active && b.contains(active) && /INPUT|TEXTAREA|SELECT/.test(active.tagName)) return; render(b); fixPatterns(b); b.scrollTop = y; };
+  render($("#sBody")); fixPatterns($("#sBody")); $("#sBody").scrollTop = 0;
   $("#sheet").classList.add("on"); $("#scrim").classList.add("on");
 }
 function realCloseSheet() { sheetRender = null; $("#sheet").classList.remove("on"); $("#scrim").classList.remove("on"); }
@@ -624,7 +728,7 @@ $("#btnAdd").onclick = () => openSheet("블록 담기", body => {
 $("#home").addEventListener("click", e => {
   const act = e.target.closest("[data-act]");
   if (act) { e.stopPropagation(); return ACTIONS[act.dataset.act](); }
-  const c = e.target.closest("[data-block]"); if (c) openBlock(c.dataset.block);
+  const c = e.target.closest("[data-block]"); if (c) { if (c.dataset.block === "korea") catTab.kprov = null; openBlock(c.dataset.block); }
 });
 $("#home").addEventListener("keydown", e => { if (e.key === "Enter") { const c = e.target.closest("[data-block]"); if (c) openBlock(c.dataset.block); } });
 $("#hero").onclick = () => { openSettings(); openCouple(); };
@@ -716,7 +820,32 @@ function openBlock(id) {
         body.querySelectorAll("[data-view]").forEach(r => r.onclick = () => viewItem(r.dataset.view));
         break;
       }
-      case "world": case "korea": {
+      case "korea": {
+        const k = kState(), pv = catTab.kprov;
+        if (!pv || !KMUNI[pv]) {
+          h = `<div class="muted" style="margin-bottom:8px">지역을 눌러 시·군·구별로 기록하고 사진을 넣어보세요.<br>전국 <b>${Math.round(k.pv.size / 17 * 100)}%</b> · 시·군·구 <b>${k.dv.size}</b>/${DIST_TOTAL}곳</div>
+          <div style="display:flex;justify-content:center">${photoMap(KOREA, "0 0 300 400", k.pv, k.pt, { click: 1, h: 440 })}</div>
+          <div class="provs">${PROV_ORDER.map(c => { const tot = KMUNI[c].length, n = KMUNI[c].filter(d => k.dv.has(d.id)).length, th = k.pt[c]; return `<button class="prov ${n || k.pv.has(c) ? "on" : ""} ${th ? "hasph" : ""}" data-prov="${c}">${th ? `<i style="background-image:url('${th.s}')"></i>` : ""}<b>${PROV[c]}</b><small>${n}/${tot}${k.pc[c] ? ` · 📷${k.pc[c]}` : ""}</small></button>`; }).join("")}</div>`;
+          body.innerHTML = h + blockCtl(id);
+          body.querySelectorAll("[data-code],[data-prov]").forEach(e => e.onclick = () => { catTab.kprov = e.dataset.prov || e.dataset.code; sheetRender(); $("#sBody").scrollTop = 0; });
+        } else {
+          const list = KMUNI[pv], n = list.filter(d => k.dv.has(d.id)).length, legacy = S.items.find(i => i.type === "korea" && i.code === pv);
+          const pph = S.items.filter(i => i.type === "kphoto" && String(i.code).startsWith(pv)).sort((a, b) => b.createdAt - a.createdAt);
+          h = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><button class="chip" data-back>‹ 전국</button><b style="font-size:17px">${PROV_FULL[pv]}</b><span class="muted" style="margin-left:auto">${n}/${list.length}곳</span></div>
+          <div class="muted" style="margin-bottom:8px">지역을 누르면 다녀온 곳 표시와 사진 추가를 할 수 있어요</div>
+          <div style="display:flex;justify-content:center;background:var(--card-solid);border-radius:18px;padding:8px">${photoMap(list, "0 0 320 320", k.dv, k.dt, { click: 1, h: 400 })}</div>
+          <div class="chips" style="margin-top:12px">${list.map(d => `<button class="chip ${k.dv.has(d.id) ? "on" : ""}" data-dist="${d.id}">${esc(d.n)}${k.dc[d.id] ? ` 📷${k.dc[d.id]}` : ""}</button>`).join("")}</div>
+          ${pph.length ? `<div class="sec">${PROV[pv]} 사진 <small>${pph.length}장</small></div><div class="grid3">${pph.slice(0, 12).map(i => `<button data-kph="${i.id}"><img src="${safeSrc(i.thumb || i.photo)}" alt="" loading="lazy"><em>${esc(distInfo(i.code).n)}</em></button>`).join("")}</div>` : ""}
+          ${legacy ? `<button class="danger" data-legacy>예전에 표시한 '${PROV[pv]} 전체' 지우기</button>` : ""}`;
+          body.innerHTML = h + blockCtl(id);
+          body.querySelector("[data-back]").onclick = () => { catTab.kprov = null; sheetRender(); $("#sBody").scrollTop = 0; };
+          body.querySelectorAll("[data-code],[data-dist]").forEach(e => e.onclick = () => openDistrict(e.dataset.dist || e.dataset.code));
+          body.querySelectorAll("[data-kph]").forEach(b => b.onclick = () => viewKPhoto(b.dataset.kph));
+          const lg = body.querySelector("[data-legacy]"); if (lg) lg.onclick = () => delItem(legacy.id);
+        }
+        break;
+      }
+      case "world": {
         const v = visited(id), map = id === "world" ? worldSvg(true) : `<div style="display:flex;justify-content:center">${koreaSvg(true, 420)}</div>`;
         const names = id === "world" ? WORLD : KOREA;
         const vlist = names.filter(c => v.has(c.id)).map(c => id === "world" ? krName(c.n) : c.n);
@@ -850,13 +979,13 @@ function openForm(type, editId, presetCat) {
 // ---------- bell / activity ----------
 function feedList() { return S.items.filter(i => !isMe(i) && i.type !== "habit" || (i.type === "habit" && !isMe(i))).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30); }
 function updateBell() { const seen = lsGet("wr_seen", 0); $("#bellDot").hidden = !(S.settings.feed !== false && feedList().some(i => i.createdAt > seen)); }
-const VERB = { album: "사진을 올렸어요", budget: "데이트 비용을 기록했어요", diary: "일기를 썼어요", world: "다녀온 나라를 표시했어요", korea: "다녀온 지역을 표시했어요", habit: "오늘 체크를 했어요", free: "메모를 남겼어요", bucket: "버킷리스트를 추가했어요", food: "맛집을 기록했어요", culture: "문화생활을 기록했어요", event: "일정을 추가했어요", request: "기능을 요청했어요" };
+const VERB = { kdist: "데이트 지도에 다녀온 곳을 표시했어요", kphoto: "데이트 지도에 사진을 올렸어요", album: "사진을 올렸어요", budget: "데이트 비용을 기록했어요", diary: "일기를 썼어요", world: "다녀온 나라를 표시했어요", korea: "다녀온 지역을 표시했어요", habit: "오늘 체크를 했어요", free: "메모를 남겼어요", bucket: "버킷리스트를 추가했어요", food: "맛집을 기록했어요", culture: "문화생활을 기록했어요", event: "일정을 추가했어요", request: "기능을 요청했어요" };
 $("#btnBell").onclick = () => {
   lsSet("wr_seen", Date.now());
   openSheet("알림", body => {
     if (S.settings.feed === false) { body.innerHTML = `<div class="dash">알림이 꺼져 있어요.<br>설정 › 알림에서 켤 수 있어요.</div>`; return; }
     const l = feedList();
-    body.innerHTML = `<div class="list feed">${l.map(i => `<div class="row"><div class="th">${(BLOCKS[i.type] || BLOCKS.calendar).ic}</div><div class="tx"><b>${esc(nameOf(i.author))}님이 ${VERB[i.type] || "기록을 남겼어요"}</b><small>${esc(i.title || i.text || "").slice(0, 40)} · ${new Date(i.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></div>`).join("") || `<div class="dash">${partnerIds().length ? "새 소식이 없어요" : "상대방이 기록을 남기면 여기에 보여요"}</div>`}</div>`;
+    body.innerHTML = `<div class="list feed">${l.map(i => `<div class="row"><div class="th">${(BLOCKS[i.type] || (/^k/.test(i.type) ? BLOCKS.korea : BLOCKS.calendar)).ic}</div><div class="tx"><b>${esc(nameOf(i.author))}님이 ${VERB[i.type] || "기록을 남겼어요"}</b><small>${esc(i.title || i.text || "").slice(0, 40)} · ${new Date(i.createdAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</small></div></div>`).join("") || `<div class="dash">${partnerIds().length ? "새 소식이 없어요" : "상대방이 기록을 남기면 여기에 보여요"}</div>`}</div>`;
   });
   updateBell();
 };
@@ -1000,7 +1129,7 @@ function hideSplash() {
 }
 setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b8";
+const BUILD = "b9";
 let updShown = false;
 async function hardRefresh() {
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update().catch(() => { }); } catch { }
