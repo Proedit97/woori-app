@@ -1,0 +1,17 @@
+{
+  "name": "우리기록",
+  "short_name": "우리기록",
+  "description": "둘만의 디데이, 맛집, 일기, 앨범, 지도를 함께 모으는 커플 기록 앱",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#efe7fb",
+  "theme_color": "#e4dcfa",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
