@@ -205,9 +205,30 @@ textarea.in1{min-height:110px;resize:vertical}
 .steps div{counter-increment:s;display:block;position:relative;background:var(--card-solid);border-radius:14px;padding:14px 14px 14px 54px;font-size:15px;line-height:1.5}
 .steps div::before{content:counter(s);width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;position:absolute;left:14px;top:50%;margin-top:-14px}
 .kbd{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:0 6px;background:var(--bg1);font-weight:700}
+#splash{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:linear-gradient(160deg,var(--bg1),var(--bg2));transition:opacity .45s ease,visibility .45s;overflow:hidden}
+#splash.out{opacity:0;visibility:hidden;pointer-events:none}
+#splash .sp-ic{width:104px;height:104px;border-radius:28px;box-shadow:0 14px 34px rgba(110,80,200,.28);animation:beat 1.4s ease-in-out infinite;overflow:hidden}
+#splash .sp-ic img{width:100%;height:100%;display:block}
+#splash b{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--ink);animation:fadeUp .6s ease both .1s}
+#splash .sp-sub{font-size:13px;color:var(--sub);margin-top:-10px;animation:fadeUp .6s ease both .25s}
+#splash .sp-dots{display:flex;gap:7px;margin-top:6px}
+#splash .sp-dots i{width:8px;height:8px;border-radius:50%;background:var(--accent);opacity:.35;animation:dot 1.1s ease-in-out infinite}
+#splash .sp-dots i:nth-child(2){animation-delay:.18s}#splash .sp-dots i:nth-child(3){animation-delay:.36s}
+#splash .fl{position:absolute;bottom:-40px;font-size:22px;opacity:0;animation:floatUp 5s linear infinite}
+@keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.09)}30%{transform:scale(.98)}45%{transform:scale(1.05)}60%{transform:scale(1)}}
+@keyframes dot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-5px)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes floatUp{0%{transform:translateY(0) rotate(0);opacity:0}10%{opacity:.7}100%{transform:translateY(-110vh) rotate(25deg);opacity:0}}
+@media (prefers-reduced-motion:reduce){#splash *{animation:none!important}}
 </style>
 </head>
 <body>
+<div id="splash" aria-label="불러오는 중"><div class="sp-ic"><img src="icons/icon-192.png" alt=""></div><b id="spName">우리기록</b><div class="sp-sub" id="spSub">우리의 기록을 불러오고 있어요</div><div class="sp-dots"><i></i><i></i><i></i></div></div>
+<script>
+(function(){try{var c=JSON.parse(localStorage.getItem("wr_settings_cache")||localStorage.getItem("wr_settings")||"{}");if(c.theme)document.documentElement.dataset.theme=c.theme;if(c.appName)document.getElementById("spName").textContent=c.appName;}catch(e){}
+var sp=document.getElementById("splash"),em=["💜","💗","✨","💕","🤍"];for(var i=0;i<9;i++){var f=document.createElement("span");f.className="fl";f.textContent=em[i%em.length];f.style.left=(6+i*11)+"%";f.style.animationDelay=(i*.55)+"s";f.style.fontSize=(16+(i*7)%14)+"px";sp.appendChild(f);}
+window.__splashT0=Date.now();})();
+</script>
 <div class="bgfx"><i></i><i></i><i></i></div>
 <div class="wrap">
   <div class="top">
@@ -272,11 +293,11 @@ async function initStore() {
     S.settings = { ...DEFAULT_SETTINGS, ...lsGet("wr_settings", {}) };
     S.items = lsGet("wr_items", []);
     setStatus("체험 모드: firebase-config.js를 설정하면 상대방과 함께 쓸 수 있어요.");
-    refresh();
+    refresh(); hideSplash();
     return;
   }
   let F;
-  try { F = await import("./fb.js"); } catch (e) { setStatus("앱을 불러오지 못했어요. 새로고침해 주세요."); return; }
+  try { F = await import("./fb.js"); } catch (e) { setStatus("앱을 불러오지 못했어요. 새로고침해 주세요."); hideSplash(); return; }
   S.F = F;
   const app = F.initializeApp(CFG);
   S.auth = F.getAuth(app);
@@ -304,6 +325,7 @@ function attachSpace(sid) {
   }, e => { console.warn(e); showGate("space"); }));
   S.unsubs.push(F.onSnapshot(F.doc(S.fb, "spaces", sid, "meta", "settings"), snap => {
     S.settings = { ...DEFAULT_SETTINGS, ...(snap.exists() ? snap.data() : {}) };
+    hideSplash();
     lsSet("wr_settings_cache", { theme: S.settings.theme, appName: S.settings.appName, appIcon: S.settings.appIcon });
     if (!snap.metadata.fromCache) { loaded = true; clearTimeout(timer); setStatus(""); }
     const me = (S.settings.members || {})[S.uid];
@@ -368,6 +390,7 @@ async function leaveSpace() {
 // ---------- login / space gate ----------
 function hideGate() { $("#gate").hidden = true; }
 function showGate(kind) {
+  hideSplash();
   const g = $("#gate"); g.hidden = false; pageStack.length = 0; pageHist = 0; showPage(); closeSheet();
   if (kind === "login") {
     g.innerHTML = `<div class="gbox"><div style="font-size:56px">${esc(S.settings.appIcon || "💜")}</div><h1>${esc(S.settings.appName || "우리기록")}</h1><p class="muted">둘만의 기록을 함께 모아요</p>${ENV.standalone ? "" : `<button class="chip" id="gInst" style="margin-top:12px">📲 앱으로 설치하기</button>`}
@@ -965,8 +988,17 @@ window.addEventListener("appinstalled", () => { installEvt = null; renderInstall
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(e => console.warn(e));
 
+
+// ---------- splash ----------
+let splashDone = false;
+function hideSplash() {
+  if (splashDone) return; splashDone = true;
+  const wait = Math.max(0, 900 - (Date.now() - (window.__splashT0 || 0)));
+  setTimeout(() => { const sp = $("#splash"); if (sp) { sp.classList.add("out"); setTimeout(() => sp.remove(), 600); } }, wait);
+}
+setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b5";
+const BUILD = "b6";
 let updShown = false;
 async function checkUpdate() {
   if (updShown || !navigator.onLine || location.protocol === "file:") return;
