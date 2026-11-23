@@ -113,6 +113,11 @@ svg.map path.hl{stroke:var(--accent);stroke-width:2.5}
 .bk .t{flex:1;border:1.5px dashed var(--line);border-radius:10px;padding:6px 10px;font-size:14px;min-height:32px}
 .bk .t.done{text-decoration:line-through;color:var(--sub)}
 .note{border:1.5px dashed var(--line);border-radius:12px;padding:10px 12px;min-height:44px;font-size:14px;margin-top:8px;white-space:pre-wrap;overflow:hidden;max-height:90px}
+.skb{background:var(--card-solid);border-radius:16px;padding:12px 10px;text-align:center}
+.skb small{color:var(--sub);font-size:12px;font-weight:700}.skb b{display:block;font:800 24px Inter,sans-serif;margin-top:2px}
+.skb.win{box-shadow:inset 0 0 0 2px #ffb400}.skb.win small::before{content:"👑 "}
+.fl-ladder{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:22px;justify-content:center;margin:8px 0}
+.fl-ladder i{font-style:normal;font-size:12px;color:var(--faint)}
 .empty-home{text-align:center;color:var(--sub);padding:40px 0}
 
 /* sheets */
@@ -269,6 +274,8 @@ window.__splashT0=Date.now();})();
 <script src="firebase-config.js"></script>
 <script src="maps.js"></script>
 <script src="kr_muni.js"></script>
+<script src="matter.min.js"></script>
+<script src="suika.js"></script>
 <script>
 "use strict";
 // ---------- helpers ----------
@@ -606,6 +613,7 @@ const BLOCKS = {
   food: { name: "맛집 기록장", ic: "🍜" },
   culture: { name: "문화 기록장", ic: "📜" },
   dday: { name: "디데이", ic: "📅" },
+  suika: { name: "수박게임", ic: "🍉" },
 };
 const ORDER = Object.keys(BLOCKS);
 
@@ -634,6 +642,10 @@ function cardHTML(id) {
   const b = BLOCKS[id], st = S.settings;
   const head = (r = "") => `<h3><span>${b.ic}</span> ${esc(id === "habit" ? st.habitName || b.name : b.name)}${r ? `<span class="r">${r}</span>` : ""}</h3>`;
   switch (id) {
+    case "suika": {
+      const me = suikaBest(S.uid), ps = partnerIds(), you = ps.length ? suikaBest(ps[0]) : 0, w = me === you ? "" : me > you ? "me" : "you";
+      return head() + `<div class="two"><div class="skb ${w === "me" ? "win" : ""}"><small>${esc(myName())}</small><b>${me.toLocaleString("ko-KR")}</b></div><div class="skb ${w === "you" ? "win" : ""}"><small>${esc(partnerName())}</small><b>${you.toLocaleString("ko-KR")}</b></div></div><button class="pill pri" data-act="suikaPlay">🍉 게임하기</button>`;
+    }
     case "dday": { const n = ddayNum(); return head() + (n == null ? `<div class="big" style="color:var(--faint)">D+?</div><div class="muted" style="margin-top:6px">처음 만난 날을 정해주세요</div>` : `<div class="big">D${n >= 0 ? "+" : ""}${n}</div>`); }
     case "food": case "culture": {
       const list = items(id), cats = id === "food" ? FOOD_CATS : CULT_CATS;
@@ -705,10 +717,26 @@ function refresh(noNames) {
   if (!noNames) resolveNames();
 }
 
+// ---------- 수박게임 ----------
+let suikaHist = false;
+function suikaBest(uid) { return S.items.filter(i => i.type === "suika" && i.author === uid).reduce((m, i) => Math.max(m, +i.score || 0), 0); }
+function playSuika() {
+  if (!window.WooriSuika || !window.Matter) return toast("게임을 불러오지 못했어요. 앱을 다시 열어주세요");
+  try { history.pushState({ w: "game" }, ""); suikaHist = true; } catch { }
+  WooriSuika.open({
+    best: suikaBest(S.uid),
+    onEnd: (score, mx) => {
+      if (score > 0 && score > suikaBest(S.uid)) { addItem({ type: "suika", score, maxLv: mx, text: score.toLocaleString("ko-KR") + "점", date: today() }); }
+    },
+    onClose: fromPop => { if (!fromPop && suikaHist) { suikaHist = false; skipPop++; try { history.back(); } catch { skipPop--; } } else suikaHist = false; },
+  });
+}
+
 // ---------- sheet / page ----------
 let sheetHist = false, pageHist = 0, skipPop = 0;
 window.addEventListener("popstate", () => {
   if (skipPop > 0) { skipPop--; return; }
+  if (window.WooriSuika && WooriSuika.isOpen()) { suikaHist = false; WooriSuika.close(true); return; }
   if ($("#sheet").classList.contains("on")) { sheetHist = false; realCloseSheet(); return; }
   if (pageStack.length) { pageHist = Math.max(0, pageHist - 1); pageStack.pop(); showPage(); }
 });
@@ -749,6 +777,7 @@ $("#home").addEventListener("keydown", e => { if (e.key === "Enter") { const c =
 $("#hero").onclick = () => { openSettings(); openCouple(); };
 
 const ACTIONS = {
+  suikaPlay: () => playSuika(),
   albumAdd: async () => { const f = await pickPhoto(); if (!f) return; toast("사진 올리는 중…"); const p = await processPhoto(f); if (p) { await addItem({ type: "album", photo: p, date: today() }); toast("사진을 올렸어요"); } },
   budgetAdd: () => openForm("budget"),
   diaryAdd: () => openForm("diary"),
@@ -772,6 +801,18 @@ function openBlock(id) {
     let h = "";
     const onHome = (S.settings.blocks || []).includes(id);
     switch (id) {
+      case "suika": {
+        const recs = S.items.filter(i => i.type === "suika").sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10);
+        const F = (window.WooriSuika && WooriSuika.FRUITS) || [];
+        h = `<div class="card" style="background:var(--card-solid)">${cardHTML("suika").replace(/<h3>.*?<\/h3>/, "")}</div>
+          <div class="sec">과일 순서</div><div class="fl-ladder">${F.map((f, i) => `${i ? "<i>›</i>" : ""}<span title="${f.n}">${f.e}</span>`).join("")}</div>
+          <p class="muted" style="text-align:center;margin-top:0">좌우로 움직이고 손을 떼면 과일이 떨어져요.<br>같은 과일이 닿으면 합쳐져서 다음 과일이 돼요. 점선 위로 넘치면 끝!</p>
+          <div class="sec">최고 기록 <small>새 기록을 세울 때마다 저장돼요</small></div>
+          <div class="list">${recs.map((i, n) => `<div class="row" style="padding:10px 14px"><b style="width:26px">${n + 1}</b><div class="tx"><b>${esc(nameOf(i.author))}</b><small>${esc(i.date || "")} · ${F[i.maxLv] ? F[i.maxLv].e + " " + F[i.maxLv].n + "까지" : ""}</small></div><span class="amt">${(i.score || 0).toLocaleString("ko-KR")}점</span></div>`).join("") || `<div class="dash">아직 기록이 없어요. 먼저 도전해 보세요!</div>`}</div>`;
+        body.innerHTML = h + blockCtl(id);
+        body.querySelector("[data-act]").onclick = () => playSuika();
+        break;
+      }
       case "dday": {
         const n = ddayNum();
         h = `<div class="card" style="text-align:center"><div class="muted">${esc(myName())} ♥ ${esc(partnerName())}</div><div class="big" style="font-size:44px;margin:6px 0">${n == null ? "D+?" : "D+" + n}</div><div class="muted">${S.settings.startDate ? esc(S.settings.startDate) + " 부터" : ""}</div></div>
@@ -994,7 +1035,7 @@ function openForm(type, editId, presetCat) {
 // ---------- bell / activity ----------
 function feedList() { return S.items.filter(i => !isMe(i) && i.type !== "habit" || (i.type === "habit" && !isMe(i))).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30); }
 function updateBell() { const seen = lsGet("wr_seen", 0); $("#bellDot").hidden = !(S.settings.feed !== false && feedList().some(i => i.createdAt > seen)); }
-const VERB = { kdist: "데이트 지도에 다녀온 곳을 표시했어요", kphoto: "데이트 지도에 사진을 올렸어요", album: "사진을 올렸어요", budget: "데이트 비용을 기록했어요", diary: "일기를 썼어요", world: "다녀온 나라를 표시했어요", korea: "다녀온 지역을 표시했어요", habit: "오늘 체크를 했어요", free: "메모를 남겼어요", bucket: "버킷리스트를 추가했어요", food: "맛집을 기록했어요", culture: "문화생활을 기록했어요", event: "일정을 추가했어요", request: "기능을 요청했어요" };
+const VERB = { suika: "수박게임 최고 기록을 세웠어요 🍉", kdist: "데이트 지도에 다녀온 곳을 표시했어요", kphoto: "데이트 지도에 사진을 올렸어요", album: "사진을 올렸어요", budget: "데이트 비용을 기록했어요", diary: "일기를 썼어요", world: "다녀온 나라를 표시했어요", korea: "다녀온 지역을 표시했어요", habit: "오늘 체크를 했어요", free: "메모를 남겼어요", bucket: "버킷리스트를 추가했어요", food: "맛집을 기록했어요", culture: "문화생활을 기록했어요", event: "일정을 추가했어요", request: "기능을 요청했어요" };
 $("#btnBell").onclick = () => {
   lsSet("wr_seen", Date.now());
   openSheet("알림", body => {
@@ -1144,7 +1185,7 @@ function hideSplash() {
 }
 setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b11";
+const BUILD = "b12";
 let updShown = false;
 async function hardRefresh() {
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update().catch(() => { }); } catch { }
