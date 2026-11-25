@@ -118,6 +118,12 @@ svg.map path.hl{stroke:var(--accent);stroke-width:2.5}
 .skb.win{box-shadow:inset 0 0 0 2px #ffb400}.skb.win small::before{content:"👑 "}
 .fl-ladder{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:22px;justify-content:center;margin:8px 0}
 .fl-ladder i{font-style:normal;font-size:12px;color:var(--faint)}
+.slot{background:var(--card-solid);border-radius:22px;padding:26px 16px 22px;text-align:center;box-shadow:0 8px 24px rgba(90,70,160,.12);margin-bottom:12px}
+.slot .se{font-size:56px;line-height:1.1}.slot .st{font-size:22px;font-weight:800;margin-top:8px;min-height:30px;word-break:keep-all}.slot .ss{color:var(--sub);font-size:13px;margin-top:6px;min-height:18px;word-break:keep-all}
+.slot.spinning .se,.slot.spinning .st{opacity:.75}.slot.pop{animation:slotpop .55s ease}
+@keyframes slotpop{0%{transform:scale(.92)}55%{transform:scale(1.06)}100%{transform:none}}
+.pickacts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px}a.chip{text-decoration:none;color:inherit}
+.pickc{display:flex;gap:12px;align-items:center;background:var(--card-solid);border-radius:16px;padding:14px}.pickc span{font-size:34px}.pickc small{color:var(--sub);font-size:12px;display:block}.pickc b{font-size:18px}
 .empty-home{text-align:center;color:var(--sub);padding:40px 0}
 
 /* sheets */
@@ -614,6 +620,8 @@ const BLOCKS = {
   culture: { name: "문화 기록장", ic: "📜" },
   dday: { name: "디데이", ic: "📅" },
   suika: { name: "수박게임", ic: "🍉" },
+  pickfood: { name: "오늘 뭐 먹지", ic: "🍽️" },
+  pickdate: { name: "랜덤 데이트", ic: "🎲" },
 };
 const ORDER = Object.keys(BLOCKS);
 
@@ -642,6 +650,11 @@ function cardHTML(id) {
   const b = BLOCKS[id], st = S.settings;
   const head = (r = "") => `<h3><span>${b.ic}</span> ${esc(id === "habit" ? st.habitName || b.name : b.name)}${r ? `<span class="r">${r}</span>` : ""}</h3>`;
   switch (id) {
+    case "pickfood": case "pickdate": {
+      const kind = id === "pickfood" ? "food" : "date";
+      const last = S.items.filter(i => i.type === "pick" && i.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0], isT = last && last.date === today();
+      return head() + (last ? `<div class="pickc"><span>${esc(last.emoji || "🎲")}</span><div><small>${isT ? (kind === "food" ? "오늘의 메뉴" : "오늘의 데이트") : "지난번 결정 · " + esc(last.date)}</small><b>${esc(last.text)}</b></div></div>` : `<div class="dash">${kind === "food" ? "고민될 땐 랜덤으로 정해요!" : "뭐 할지 모르겠을 땐 뽑아봐요!"}</div>`) + `<button class="pill pri" data-act="${kind === "food" ? "pickFood" : "pickDate"}">🎲 ${kind === "food" ? "메뉴 뽑기" : "데이트 뽑기"}</button>`;
+    }
     case "suika": {
       const me = suikaBest(S.uid), ps = partnerIds(), you = ps.length ? suikaBest(ps[0]) : 0, w = me === you ? "" : me > you ? "me" : "you";
       return head() + `<div class="two"><div class="skb ${w === "me" ? "win" : ""}"><small>${esc(myName())}</small><b>${me.toLocaleString("ko-KR")}</b></div><div class="skb ${w === "you" ? "win" : ""}"><small>${esc(partnerName())}</small><b>${you.toLocaleString("ko-KR")}</b></div></div><button class="pill pri" data-act="suikaPlay">🍉 게임하기</button>`;
@@ -717,6 +730,114 @@ function refresh(noNames) {
   if (!noNames) resolveNames();
 }
 
+// ---------- 랜덤 뽑기: 오늘 뭐 먹지 / 랜덤 데이트 ----------
+const FOOD_MENU = {
+  "한식": ["🍚", "김치찌개 된장찌개 순두부찌개 부대찌개 제육볶음 불고기 비빔밥 김치볶음밥 칼국수 냉면 국밥 감자탕 닭볶음탕 쌈밥 보쌈 갈비탕 삼계탕 육회비빔밥"],
+  "중식": ["🥟", "짜장면 짬뽕 탕수육 마라탕 마라샹궈 꿔바로우 양꼬치 볶음밥 딤섬 훠궈 깐풍기 유린기"],
+  "일식": ["🍣", "초밥 라멘 돈카츠 우동 소바 규동 오코노미야키 연어덮밥 텐동 사케동 이자카야 오마카세"],
+  "양식": ["🍝", "파스타 피자 스테이크 리조또 수제버거 브런치 샐러드 감바스 타코 그라탕 뇨끼"],
+  "분식": ["🍢", "떡볶이 김밥 라볶이 순대 튀김 쫄면 어묵 즉석떡볶이 로제떡볶이 컵밥"],
+  "아시안": ["🍜", "쌀국수 팟타이 분짜 반미 인도커리 나시고렝 똠얌꿍 카오팟 월남쌈 일본카레"],
+  "고기": ["🥩", "삼겹살 소고기 구이 돼지갈비 곱창 막창 닭갈비 오리고기 양갈비 차돌박이 목살"],
+  "치킨·버거": ["🍗", "후라이드 치킨 양념치킨 간장치킨 햄버거 핫도그 샌드위치 치킨버거"],
+  "해산물": ["🦐", "회 조개구이 대게 아귀찜 해물파전 낙지볶음 장어구이 해물찜 물회 굴보쌈"],
+  "야식": ["🌙", "족발 닭발 라면 곱창볶음 오뎅탕 닭꼬치 골뱅이무침 감자전"],
+};
+// [이모지, 데이트, 분류, 예산(0 무료·1 3만↓·2 10만↓·3 10만↑), 한마디]
+const DATE_IDEAS = [
+  ["🎬", "집에서 영화 정주행", "집", 0, "팝콘 튀기고 이불 덮고 시리즈 몰아보기"], ["🍳", "같이 요리하기", "집", 1, "처음 해보는 요리에 도전해요"], ["🧩", "1000피스 퍼즐 맞추기", "집", 1, "완성하면 액자에 넣기"], ["🎲", "보드게임 밤", "집", 0, "지는 사람 소원 들어주기"], ["🎤", "집에서 노래방", "집", 0, "유튜브 노래방으로 듀엣"], ["📸", "옛날 사진 같이 보기", "집", 0, "처음 만났을 때 사진부터"], ["🍪", "홈베이킹", "집", 1, "쿠키나 머핀 굽기"], ["💌", "서로에게 편지 쓰기", "집", 0, "1년 뒤에 같이 열어보기"], ["🧖", "홈 스파 데이", "집", 1, "마스크팩 하고 서로 마사지"], ["🎮", "같이 게임하기", "집", 0, "협동 게임으로 팀워크 확인"],
+  ["🌳", "공원 피크닉", "야외", 1, "돗자리랑 샌드위치 챙기기"], ["🚲", "한강 자전거", "야외", 1, "따릉이 타고 노을 보기"], ["🌅", "일출/일몰 보러 가기", "야외", 0, "핫팩이랑 따뜻한 음료 필수"], ["⛰️", "가벼운 등산", "야외", 0, "정상에서 컵라면"], ["🌸", "꽃구경·단풍 구경", "야외", 0, "계절 사진 남기기"], ["🌙", "야경 명소 드라이브", "야외", 1, "전망대에서 야경 보기"], ["🐾", "동물원·아쿠아리움", "야외", 2, "제일 좋아하는 동물 찾기"], ["🏖️", "바다 보러 가기", "야외", 2, "모래사장에 이름 쓰기"], ["🌌", "별 보러 가기", "야외", 1, "별자리 앱 켜고 찾아보기"], ["🚶", "처음 가보는 동네 산책", "야외", 0, "골목 탐방하다 맘에 드는 가게 들어가기"],
+  ["🎨", "전시회 관람", "문화", 1, "마음에 드는 작품 하나씩 고르기"], ["🎭", "연극·뮤지컬 보기", "문화", 2, "끝나고 감상 나누기"], ["🎞️", "영화관 데이트", "문화", 1, "서로 고른 영화 한 편씩"], ["📚", "서점·북카페 데이트", "문화", 1, "서로에게 책 한 권 골라주기"], ["🎵", "콘서트·버스킹 보기", "문화", 2, "좋아하는 가수 공연 찾아보기"], ["🏛️", "박물관 나들이", "문화", 0, "국립 박물관은 대부분 무료"], ["🎪", "플리마켓·축제 구경", "문화", 1, "커플템 하나 사기"],
+  ["🎳", "볼링 치기", "액티비티", 1, "진 사람이 저녁 사기"], ["🔐", "방탈출 카페", "액티비티", 1, "공포 테마 도전?"], ["🧗", "클라이밍 체험", "액티비티", 2, "서로 응원해주기"], ["⛸️", "아이스링크", "액티비티", 1, "손 꼭 잡고 타기"], ["🎯", "오락실·인형뽑기", "액티비티", 1, "인형 뽑아서 선물하기"], ["🏓", "탁구·배드민턴", "액티비티", 0, "내기 한 판"], ["🎢", "놀이공원", "액티비티", 3, "교복 데이트도 좋아요"], ["🏊", "수영장·워터파크", "액티비티", 2, "튜브 타고 둥둥"], ["🛶", "카약·패들보드", "액티비티", 2, "물 위에서 사진 찍기"], ["🎱", "당구·다트", "액티비티", 1, "새 게임 배워보기"],
+  ["☕", "예쁜 카페 투어", "맛집·카페", 1, "디저트 하나씩 나눠먹기"], ["🍜", "맛집 오픈런", "맛집·카페", 1, "웨이팅도 같이 하면 재밌어요"], ["🍷", "와인바 데이트", "맛집·카페", 2, "서로 와인 골라주기"], ["🥞", "브런치 데이트", "맛집·카페", 1, "늦잠 자고 느긋하게"], ["🍰", "디저트 투어", "맛집·카페", 1, "케이크 3군데 돌기"], ["🍢", "시장 먹방 투어", "맛집·카페", 1, "전통시장에서 길거리 음식"], ["🥂", "분위기 좋은 레스토랑", "맛집·카페", 3, "기념일엔 조금 특별하게"], ["🍻", "포장마차 데이트", "맛집·카페", 1, "우동이랑 소주 한잔"],
+  ["🚗", "근교 당일치기 여행", "여행", 2, "가까운 소도시 탐방"], ["🚆", "기차 타고 여행", "여행", 2, "창밖 보면서 수다"], ["🏕️", "캠핑·글램핑", "여행", 3, "불멍하면서 마시멜로"], ["♨️", "온천·찜질방", "여행", 1, "식혜랑 맥반석 계란"], ["🏯", "한옥마을 한복 데이트", "여행", 2, "한복 입고 사진 남기기"], ["🌊", "섬 여행", "여행", 3, "배 타고 들어가는 작은 섬"],
+  ["🕯️", "향수·캔들 만들기 원데이클래스", "이색", 2, "서로의 향 만들어주기"], ["💍", "커플링 만들기", "이색", 3, "직접 만든 반지 교환"], ["🎨", "도자기 공방", "이색", 2, "커플 머그컵 만들기"], ["📷", "인생네컷·셀프사진관", "이색", 1, "매달 찍어서 모으기"], ["🎤", "코인노래방 배틀", "이색", 1, "점수 낮은 사람 벌칙"], ["🧁", "쿠킹 클래스", "이색", 2, "새로운 요리 배우기"], ["🐶", "애견·고양이 카페", "이색", 1, "동물 친구들이랑 힐링"], ["🖼️", "커플 그림 그리기", "이색", 1, "서로 얼굴 그려주기"], ["🌿", "식물 화분 만들기", "이색", 1, "같이 키울 반려식물"],
+];
+const DATE_CATS = { "집": "🏠", "야외": "🌳", "문화": "🎨", "액티비티": "🎳", "맛집·카페": "☕", "여행": "🚗", "이색": "✨" };
+const BUDGETS = ["전체", "무료", "3만원 이하", "10만원 이하"];
+const PICK_DEF = { food: { cats: Object.keys(FOOD_MENU), src: "menu" }, date: { cats: Object.keys(DATE_CATS), src: "idea", budget: 0 } };
+let pickSpinning = false;
+const pickRes = {};
+function pickPrefs(kind) { const all = lsGet("wr_pick", {}); return { ...PICK_DEF[kind], ...(all[kind] || {}) }; }
+function savePickPrefs(kind, p) { const all = lsGet("wr_pick", {}); all[kind] = p; lsSet("wr_pick", all); }
+function pickPool(kind) {
+  const p = pickPrefs(kind), out = [];
+  if (kind === "food") {
+    if (p.src === "menu") for (const c of p.cats) { const m = FOOD_MENU[c]; if (m) m[1].split(" ").forEach(t => out.push({ e: m[0], t: t.replace(/_/g, " "), s: c })); }
+    else if (p.src === "mine") S.items.filter(i => i.type === "food").forEach(i => out.push({ e: i.cat === "카페" ? "☕" : "🍽️", t: i.title, s: (i.cat || "") + (i.place ? " · " + i.place : "") + (i.rating ? " · " + "★".repeat(i.rating) : "") }));
+    else S.items.filter(i => i.type === "pickopt" && i.kind === "food").forEach(i => out.push({ e: "⭐", t: i.text, s: "직접 추가한 메뉴" }));
+  } else {
+    if (p.src === "idea") DATE_IDEAS.filter(d => p.cats.includes(d[2]) && (!p.budget || d[3] <= p.budget - 1)).forEach(d => out.push({ e: d[0], t: d[1], s: d[4], c: d[2], b: d[3] }));
+    else if (p.src === "region" && typeof KMUNI !== "undefined") { const k = kState(); PROV_ORDER.forEach(pv => (KMUNI[pv] || []).forEach(d => { if (!k.dv.has(d.id)) out.push({ e: "📍", t: `${PROV[pv]} ${d.n} 가보기`, s: "아직 안 가본 동네예요", code: d.id }); })); }
+    else if (p.src === "bucket") S.items.filter(i => i.type === "bucket" && !i.done).forEach(i => out.push({ e: "🎯", t: i.text, s: "버킷리스트에서 뽑았어요", bid: i.id }));
+    else S.items.filter(i => i.type === "pickopt" && i.kind === "date").forEach(i => out.push({ e: "⭐", t: i.text, s: "직접 추가한 데이트" }));
+  }
+  return out;
+}
+function budgetLabel(b) { return ["무료", "3만원 이하", "10만원 이하", "10만원 이상"][b] || ""; }
+function openPick(kind, autoSpin) {
+  const title = kind === "food" ? "🍽️ 오늘 뭐 먹지?" : "🎲 랜덤 데이트";
+  openSheet(title, body => {
+    if (pickSpinning) return;
+    const p = pickPrefs(kind), pool = pickPool(kind), r = pickRes[kind];
+    const srcs = kind === "food" ? [["menu", "메뉴 전체"], ["mine", "우리 맛집 기록장"], ["custom", "직접 추가"]] : [["idea", "데이트 아이디어"], ["region", "안 가본 동네"], ["bucket", "버킷리스트"], ["custom", "직접 추가"]];
+    const cats = kind === "food" ? Object.entries(FOOD_MENU).map(([c, v]) => [c, v[0]]) : Object.entries(DATE_CATS);
+    const hist = S.items.filter(i => i.type === "pick" && i.kind === kind).sort((a, b) => b.createdAt - a.createdAt).slice(0, 8);
+    const customs = S.items.filter(i => i.type === "pickopt" && i.kind === kind);
+    body.innerHTML = `
+      <div class="slot ${r ? "done" : ""}" id="slot"><div class="se">${r ? r.e : (kind === "food" ? "🍽️" : "💝")}</div><div class="st" id="slotT">${r ? esc(r.t) : "무엇이 나올까요?"}</div><div class="ss">${r ? esc(r.s || "") + (r.b != null ? ` · ${budgetLabel(r.b)}` : "") : `후보 ${pool.length}개 중에서 골라요`}</div></div>
+      <button class="pill pri" id="spin" ${pool.length ? "" : "disabled style=opacity:.5"}>🎲 ${r ? "다시 돌리기" : "돌리기"}</button>
+      ${r ? `<div class="pickacts">
+        <button class="chip on" id="pkOk">✅ 이걸로 결정!</button>
+        ${kind === "food" ? `<a class="chip" href="https://map.naver.com/p/search/${encodeURIComponent(r.t + " 맛집")}" target="_blank" rel="noopener">🗺️ 근처 찾기</a>` : ""}
+        ${kind === "date" && r.code ? `<button class="chip" id="pkMap">📍 데이트 지도에서 보기</button>` : ""}
+        ${kind === "date" && !r.bid ? `<button class="chip" id="pkBucket">🎯 버킷리스트에 담기</button>` : ""}
+        ${kind === "date" ? `<button class="chip" id="pkCal">🗓️ 캘린더에 추가</button>` : ""}
+      </div><div id="calBox" hidden class="f" style="margin-top:10px"><div style="display:flex;gap:8px"><input class="in1" type="date" id="pkDate" value="${today()}"><button class="chip on" id="pkCalOk" style="flex:none">추가</button></div></div>` : ""}
+      ${!pool.length ? `<div class="dash" style="margin-top:12px">${p.src === "mine" ? "맛집 기록장에 기록이 없어요" : p.src === "bucket" ? "남은 버킷리스트가 없어요" : p.src === "custom" ? "아래에서 후보를 직접 추가해 주세요" : "분류를 하나 이상 골라주세요"}</div>` : ""}
+      <div class="sec">어디서 뽑을까요?</div><div class="chips">${srcs.map(([v, l]) => `<button class="chip ${p.src === v ? "on" : ""}" data-src="${v}">${l}</button>`).join("")}</div>
+      ${(kind === "food" && p.src === "menu") || (kind === "date" && p.src === "idea") ? `<div class="sec">분류 <small><button class="chip" data-all style="padding:4px 10px">${p.cats.length === cats.length ? "모두 해제" : "모두 선택"}</button></small></div><div class="chips">${cats.map(([c, e]) => `<button class="chip ${p.cats.includes(c) ? "on" : ""}" data-cat="${esc(c)}">${e} ${esc(c)}</button>`).join("")}</div>` : ""}
+      ${kind === "date" && p.src === "idea" ? `<div class="sec">예산</div><div class="chips">${BUDGETS.map((l, i) => `<button class="chip ${(p.budget || 0) === i ? "on" : ""}" data-bud="${i}">${l}</button>`).join("")}</div>` : ""}
+      ${p.src === "custom" ? `<div class="sec">직접 추가한 후보 <small>${customs.length}개</small></div><div style="display:flex;gap:8px"><input class="in1" id="pkNew" maxlength="30" placeholder="${kind === "food" ? "예: 회사 앞 국수집" : "예: 서울숲 산책"}"><button class="chip on" id="pkAdd" style="flex:none">추가</button></div><div class="chips" style="margin-top:8px">${customs.map(i => `<span class="chip">${esc(i.text)} <button data-delopt="${i.id}" style="margin-left:4px;color:var(--faint)">✕</button></span>`).join("")}</div>` : ""}
+      <div class="sec">최근 결정 <small>둘이 함께 봐요</small></div>
+      <div class="list">${hist.map(i => `<div class="row" style="padding:10px 12px"><div class="th" style="width:40px;height:40px;font-size:20px">${esc(i.emoji || "🎲")}</div><div class="tx"><b>${esc(i.text)}</b><small>${esc(nameOf(i.author))} · ${esc(i.date)}</small></div></div>`).join("") || `<div class="muted">아직 결정한 기록이 없어요</div>`}</div>`;
+    const set = patch => { savePickPrefs(kind, { ...p, ...patch }); pickRes[kind] = null; sheetRender(); };
+    body.querySelectorAll("[data-src]").forEach(b => b.onclick = () => set({ src: b.dataset.src }));
+    body.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { const c = b.dataset.cat, cs = p.cats.includes(c) ? p.cats.filter(x => x !== c) : [...p.cats, c]; set({ cats: cs }); });
+    const all = body.querySelector("[data-all]"); if (all) all.onclick = () => set({ cats: p.cats.length === cats.length ? [] : cats.map(x => x[0]) });
+    body.querySelectorAll("[data-bud]").forEach(b => b.onclick = () => set({ budget: +b.dataset.bud }));
+    $("#spin").onclick = () => spinPick(kind);
+    const ok = $("#pkOk"); if (ok) ok.onclick = () => { addItem({ type: "pick", kind, text: r.t, emoji: r.e, date: today() }); toast(kind === "food" ? `오늘은 ${r.t}! 맛있게 먹어요 😋` : `${r.t}! 즐거운 데이트 되세요 💕`); };
+    const mp = $("#pkMap"); if (mp) mp.onclick = () => { openDistrict(r.code); };
+    const bk = $("#pkBucket"); if (bk) bk.onclick = () => { addItem({ type: "bucket", text: r.t, done: false }); toast("버킷리스트에 담았어요 🎯"); };
+    const cl = $("#pkCal"); if (cl) cl.onclick = () => { $("#calBox").hidden = false; };
+    const co = $("#pkCalOk"); if (co) co.onclick = () => { const d = $("#pkDate").value || today(); document.activeElement.blur(); addItem({ type: "event", date: d, title: `${r.e} ${r.t}` }); toast(`${d} 캘린더에 추가했어요 🗓️`); $("#calBox").hidden = true; };
+    const ad = $("#pkAdd"); if (ad) { const add = () => { const v = $("#pkNew").value.trim(); if (!v) return; $("#pkNew").value = ""; $("#pkNew").blur(); addItem({ type: "pickopt", kind, text: v }); }; ad.onclick = add; $("#pkNew").onkeydown = e => { if (e.key === "Enter") add(); }; }
+    body.querySelectorAll("[data-delopt]").forEach(b => b.onclick = () => delItem(b.dataset.delopt));
+  });
+  if (autoSpin) setTimeout(() => spinPick(kind), 350);
+}
+function spinPick(kind) {
+  if (pickSpinning) return;
+  const pool = pickPool(kind); if (!pool.length) return toast("후보가 없어요");
+  const final = pool[Math.floor(Math.random() * pool.length)];
+  const slot = $("#slot"), tEl = slot && slot.querySelector(".st"), eEl = slot && slot.querySelector(".se"), sEl = slot && slot.querySelector(".ss");
+  if (!slot) return;
+  pickSpinning = true; slot.classList.remove("done"); slot.classList.add("spinning"); sEl.textContent = "두근두근…";
+  const btn = $("#spin"); if (btn) btn.disabled = true;
+  let n = 0; const total = 22 + Math.floor(Math.random() * 6);
+  const tick = () => {
+    const it = n === total ? final : pool[Math.floor(Math.random() * pool.length)];
+    eEl.textContent = it.e; tEl.textContent = it.t;
+    if (n++ < total) { setTimeout(tick, 40 + Math.pow(n / total, 3) * 240); return; }
+    try { navigator.vibrate && navigator.vibrate([20, 40, 30]); } catch { }
+    slot.classList.remove("spinning"); slot.classList.add("done", "pop");
+    pickRes[kind] = final;
+    setTimeout(() => { pickSpinning = false; sheetRender && sheetRender(); }, 650);
+  };
+  tick();
+}
+
 // ---------- 수박게임 ----------
 let suikaHist = false;
 function suikaBest(uid) { return S.items.filter(i => i.type === "suika" && i.author === uid).reduce((m, i) => Math.max(m, +i.score || 0), 0); }
@@ -778,6 +899,8 @@ $("#hero").onclick = () => { openSettings(); openCouple(); };
 
 const ACTIONS = {
   suikaPlay: () => playSuika(),
+  pickFood: () => openPick("food", true),
+  pickDate: () => openPick("date", true),
   albumAdd: async () => { const f = await pickPhoto(); if (!f) return; toast("사진 올리는 중…"); const p = await processPhoto(f); if (p) { await addItem({ type: "album", photo: p, date: today() }); toast("사진을 올렸어요"); } },
   budgetAdd: () => openForm("budget"),
   diaryAdd: () => openForm("diary"),
@@ -795,6 +918,7 @@ function wireCtl(body, id) {
 const starStr = n => n ? "★".repeat(n) + "☆".repeat(5 - n) : "";
 let catTab = {};
 function openBlock(id) {
+  if (id === "pickfood" || id === "pickdate") return openPick(id === "pickfood" ? "food" : "date", false);
   const b = BLOCKS[id];
   const title = b.ic + " " + (id === "habit" ? S.settings.habitName || b.name : b.name);
   openSheet(title, body => {
@@ -1035,7 +1159,7 @@ function openForm(type, editId, presetCat) {
 // ---------- bell / activity ----------
 function feedList() { return S.items.filter(i => !isMe(i) && i.type !== "habit" || (i.type === "habit" && !isMe(i))).sort((a, b) => b.createdAt - a.createdAt).slice(0, 30); }
 function updateBell() { const seen = lsGet("wr_seen", 0); $("#bellDot").hidden = !(S.settings.feed !== false && feedList().some(i => i.createdAt > seen)); }
-const VERB = { suika: "수박게임 최고 기록을 세웠어요 🍉", kdist: "데이트 지도에 다녀온 곳을 표시했어요", kphoto: "데이트 지도에 사진을 올렸어요", album: "사진을 올렸어요", budget: "데이트 비용을 기록했어요", diary: "일기를 썼어요", world: "다녀온 나라를 표시했어요", korea: "다녀온 지역을 표시했어요", habit: "오늘 체크를 했어요", free: "메모를 남겼어요", bucket: "버킷리스트를 추가했어요", food: "맛집을 기록했어요", culture: "문화생활을 기록했어요", event: "일정을 추가했어요", request: "기능을 요청했어요" };
+const VERB = { pick: "랜덤으로 정했어요 🎲", pickopt: "랜덤 후보를 추가했어요", suika: "수박게임 최고 기록을 세웠어요 🍉", kdist: "데이트 지도에 다녀온 곳을 표시했어요", kphoto: "데이트 지도에 사진을 올렸어요", album: "사진을 올렸어요", budget: "데이트 비용을 기록했어요", diary: "일기를 썼어요", world: "다녀온 나라를 표시했어요", korea: "다녀온 지역을 표시했어요", habit: "오늘 체크를 했어요", free: "메모를 남겼어요", bucket: "버킷리스트를 추가했어요", food: "맛집을 기록했어요", culture: "문화생활을 기록했어요", event: "일정을 추가했어요", request: "기능을 요청했어요" };
 $("#btnBell").onclick = () => {
   lsSet("wr_seen", Date.now());
   openSheet("알림", body => {
@@ -1185,7 +1309,7 @@ function hideSplash() {
 }
 setTimeout(hideSplash, 7000);
 // ---------- auto update ----------
-const BUILD = "b12";
+const BUILD = "b13";
 let updShown = false;
 async function hardRefresh() {
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update().catch(() => { }); } catch { }
